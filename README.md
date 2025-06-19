@@ -10,10 +10,12 @@ Advances in CGH have been driven by new algorithms (e.g., Gerchberg–Saxton, AD
 
 ## Features
 
-Modular pipeline for testing new hologram generation algorithms.
+Modular pipeline for testing new hologram generation algorithms. Currently provided are Simulated Annealing, Gradient Descent, One Step Phase Retrieval, Genetic Algorithm, and Direct Binary Search. These algorithms have been implemented using a NumPy only approach with low external dependencies to allow for simple editing. 
 
-Custom loss function integration for perceptual and task-specific optimization.
+Custom loss function integration for perceptual and task-specific optimization. Currently provided options include Mean Squared Error, Peak Signal to Noise Ratio, Structural Similarity Index Measure, Wavelet Normalised Cross Correlation. See S.G. publications for ongoing loss functions research. 
 
-Support for phase-only and amplitude-modulated holograms.
+Support for phase-only and amplitude-modulated holograms (not comprehensive, see notes on cont and binary phase). 
 
-Utilities for simulating propagation (Fourier)
+Utilities for simulating propagation (Fourier).
+
+http://www-g.eng.cam.ac.uk/CMMPE/
