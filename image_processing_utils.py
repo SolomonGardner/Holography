@@ -8,7 +8,6 @@ import skimage
 from skimage.transform import resize
 from skimage.metrics import mean_squared_error
 from PIL import Image
-# from simulator import *
 import pandas as pd
 
 def load_image(path):
@@ -32,7 +31,6 @@ def load_image(path):
 def resize_image(image, x, y):
     resized_image = skimage.transform.resize(image, output_shape = (x, y), mode='constant', anti_aliasing=True)
     return resized_image
-
 
 
 def center_square_crop(img: np.ndarray) -> np.ndarray:
