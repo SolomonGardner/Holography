@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import PIL
 import skimage
 from skimage.transform import resize
-# from skimage.metrics import mean_squared_error
 from PIL import Image
 from tqdm import tqdm
 import math
@@ -62,7 +61,6 @@ class HologramGenerationAlgo():
     def direct_binary_search(self, loss_function, n_iter=2000, roi=(slice(None), slice(None))):
 
         image = self.image_array.image_array
-        #TargetAmplitude = np.sqrt(image.image_array)
         TargetAmplitude = np.sqrt(image)
         H = np.round(np.random.rand(*TargetAmplitude.shape))
         R = abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(np.exp(1j * H * np.pi)))))
@@ -70,7 +68,6 @@ class HologramGenerationAlgo():
         L = loss_function(R[roi], TargetAmplitude[roi])
 
         loss_list = []  # Record loss (for plotting)
-        # for n in range(n_iter):
         for n in tqdm(range(n_iter), disable=not self.verbose, desc="Processing"):
             random_location = np.random.randint(0, H.shape[0]), np.random.randint(0, H.shape[1])
             H_n = H.copy()
@@ -145,7 +142,6 @@ class HologramGenerationAlgo():
                           roi=(slice(None), slice(None))):
 
         T = np.sqrt(self.image_array.image_array)
-        #H_list = [np.round(np.random.rand(*T.shape)) for _ in range(N)]
         H_list = [(np.random.rand(*T.shape)) for _ in range(N)] # continuous phase
         error_list = []
         R_list = []
@@ -199,8 +195,6 @@ class HologramGenerationAlgo():
 
         TargetImage = np.sqrt(self.image_array.image_array)
         TargetAmplitude = np.sqrt(TargetImage)  # target amplitude is the square root of intensity
-
-        #N = 50  # Number of iterations
         T = TargetAmplitude
 
         R_total = np.zeros_like(T)  # Create an array of zeros with the same size as T
@@ -233,83 +227,7 @@ class HologramGenerationAlgo():
         avg_recon = R_total / holo_frame_i / np.max(TargetAmplitude)
 
         return avg_recon, FreemanHolo
-
-    def gradient_descent_old(
-            self,
-            loss_function,
-            n_iter: int = 1_000,
-            lr: float = 1e-2,
-            roi: tuple = (slice(None), slice(None)),
-            finite_eps: float = 1e-4,  # FD step for ∂L/∂A
-            sample_ratio: float = 0.10,  # stochastic FD for speed
-    ):
-
-        image = self.image_array.image_array
-        TargetAmplitude = np.sqrt(image.astype(np.float32))
-
-        # --------  continuous phase ϕ ∈ [0,1)  ----------------------
-        H_float = np.random.rand(*TargetAmplitude.shape).astype(np.float32)
-
-        loss_trace = []
-        h, w = TargetAmplitude.shape
-        hw = h * w
-
-        # Pre-compute ROI mask & linear indices for stochastic FD
-        roi_mask = np.zeros_like(TargetAmplitude, dtype=bool)
-        roi_mask[roi] = True
-        roi_indices = np.argwhere(roi_mask)  # (N_roi, 2)
-
-        for _ in tqdm(range(n_iter), disable=not self.verbose, desc="GD"):
-
-            # 1. Forward model  ---------------- ϕ → amplitude A
-            field = np.exp(1j * np.pi * H_float)
-            R = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(field)))
-            A = np.abs(R)
-
-            # energy normalisation (same formula as DBS)
-            scale = np.sqrt((TargetAmplitude ** 2).sum() / (A ** 2).sum())
-            A *= scale
-
-            # Compute scalar loss only (no gradient yet)
-            L = loss_function(A[roi], TargetAmplitude[roi])
-            loss_trace.append(float(L))
-
-            # 2. Finite-difference ∂L/∂A on a random 10 % ROI subset
-            g_A = np.zeros_like(A, dtype=np.float32)
-
-            # stochastic subset for speed
-            sample_idx = roi_indices[
-                np.random.choice(len(roi_indices),
-                                 size=int(sample_ratio * len(roi_indices)),
-                                 replace=False)
-            ]
-
-            for (y, x) in sample_idx:
-                A_perturb = A[y, x]
-                A[y, x] += finite_eps
-                L_plus = loss_function(A[roi], TargetAmplitude[roi])
-                g_A[y, x] = (L_plus - L) / finite_eps
-                A[y, x] = A_perturb  # restore
-
-            # 3. Back-propagate to phase ϕ analytically
-            denom = A + 1e-12
-            g_Q = g_A * (R / denom)  # ∂|Q| wrt Q
-            g_field = hw * np.fft.ifft2(np.fft.ifftshift(g_Q))
-            g_field = np.fft.fftshift(g_field)
-            g_phase = np.pi * np.imag(g_field * np.conj(field))
-
-            # 4. Gradient-descent update & wrap to [0,1)
-            H_float -= lr * g_phase.astype(np.float32)
-            H_float %= 1.0
-
-        # 5. Binarise & final reconstruction
-        H_bin = (H_float > 0.5).astype(np.float32)
-        R_final = np.fft.fftshift(
-            np.fft.fft2(np.fft.fftshift(np.exp(1j * H_bin * np.pi))))
-        R_final = np.abs(R_final)
-        R_final *= np.sqrt((TargetAmplitude ** 2).sum() / (R_final ** 2).sum())
-
-        return R_final.astype(np.float32), loss_trace
+        
 
     def gradient_descent(
             self,
@@ -324,7 +242,7 @@ class HologramGenerationAlgo():
         image = self.image_array.image_array
         TargetAmplitude = np.sqrt(image.astype(np.float32))
 
-        # continuous phase ϕ ∈ [0,1)
+        # continuous phase ∈ [0,1)
         H_float = np.random.rand(*TargetAmplitude.shape).astype(np.float32)
 
         loss_trace = []
@@ -334,7 +252,7 @@ class HologramGenerationAlgo():
         # pre-detect loss type by name (cheap heuristic)
         for _ in tqdm(range(n_iter), disable=not self.verbose, desc="GD"):
 
-            # ---------- forward model ----------------------------------
+            #forward model
             field = np.exp(1j * np.pi * H_float)
             R = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(field)))
             A = np.abs(R)
@@ -345,7 +263,7 @@ class HologramGenerationAlgo():
             A_roi = A[roi]
             T_roi = TargetAmplitude[roi]
 
-            # ---------- loss + gradient wrt amplitude ------------------
+            # loss + gradient wrt amplitude
 
             L, g_roi = loss_function(A_roi, T_roi)
             g_A = np.zeros_like(A, dtype=np.float32)
@@ -353,18 +271,18 @@ class HologramGenerationAlgo():
 
             loss_trace.append(L)
 
-            # ---------- back-prop to phase ϕ ---------------------------
+            # back-prop to phase 
             denom = A + 1e-12
             g_Q = g_A * (R / denom)
             g_f = hw * np.fft.ifft2(np.fft.ifftshift(g_Q))
             g_f = np.fft.fftshift(g_f)
             g_phase = np.pi * np.imag(g_f * np.conj(field))
 
-            # ---------- phase update & wrap ----------------------------
+            # phase update & wrap 
             H_float -= lr * g_phase.astype(np.float32)
             H_float %= 1.0
 
-        # ---------- binarise & final reconstruction -------------------
+        # binarise & final reconstruction 
         H_bin = (H_float > 0.5).astype(np.float32)
         R_final = np.fft.fftshift(
             np.fft.fft2(np.fft.fftshift(np.exp(1j * H_bin * np.pi))))
@@ -385,11 +303,10 @@ class HologramGenerationAlgo():
     ):
 
         image = self.image_array.image_array
-        #TargetAmplitude = np.sqrt(image.astype(np.float32))
         TargetAmplitude = np.sqrt(image)
         TargetAmplitude = np.nan_to_num(image, nan=0.0, posinf=np.max(image), neginf=0.0) # may be uneccasary
 
-        # continuous phase ϕ ∈ [0,1)  (same initialisation)
+        # continuous phase ∈ [0,1)  (same initialisation)
         H_float = np.random.rand(*TargetAmplitude.shape).astype(np.float32)
 
         loss_trace = []
@@ -397,8 +314,8 @@ class HologramGenerationAlgo():
         hw = h * w
 
         for _ in tqdm(range(n_iter), disable=not self.verbose, desc="GD"):
-            # ---------- forward model ----------------------------------
-            # ★ CHANGED:   π  →  2π   (full continuous phase range)
+            # forward model
+            # CHANGED:   pi  →  2pi   (full continuous phase range)
             field = np.exp(1j * 2 * np.pi * H_float)
 
             R = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(field)))
@@ -410,29 +327,27 @@ class HologramGenerationAlgo():
             A_roi = A[roi]
             T_roi = TargetAmplitude[roi]
 
-            # ---------- loss + gradient wrt amplitude ------------------
+            # loss + gradient wrt amplitude 
             L, g_roi = loss_function(A_roi, T_roi)  # no change
             g_A = np.zeros_like(A, dtype=np.float32)
             g_A[roi] = g_roi
             loss_trace.append(L)
 
-            # ---------- back-prop to phase ϕ ---------------------------
+            # back-prop to phase 
             denom = A + 1e-12
             g_Q = g_A * (R / denom)
             g_f = hw * np.fft.ifft2(np.fft.ifftshift(g_Q))
             g_f = np.fft.fftshift(g_f)
 
-            # ★ CHANGED:  gradient factor π  →  2π
+            # CHANGED:  gradient factor pi  →  2pi
             g_phase = 2 * np.pi * np.imag(g_f * np.conj(field))
 
-            # ---------- phase update & wrap ----------------------------
+            # phase update & wrap 
             H_float -= lr * g_phase.astype(np.float32)
-            H_float %= 1.0  # keep 0…1 (⇒ 0…2π rad)
+            H_float %= 1.0  # keep 0…1 (⇒ 0…2pi rad)
 
-
-
-        # ---------- final reconstruction  (NO binarisation) -----------
-        # ★ CHANGED:  remove threshold; use continuous phase directly
+        # final reconstruction  (NO binarisation)
+        # CHANGED:  remove threshold; use continuous phase directly
         field_c = np.exp(1j * 2 * np.pi * H_float)
         R_final = np.fft.fftshift(
             np.fft.fft2(np.fft.fftshift(field_c)))
@@ -440,168 +355,6 @@ class HologramGenerationAlgo():
         R_final *= np.sqrt((TargetAmplitude ** 2).sum() / (R_final ** 2).sum())
 
         return R_final.astype(np.float32), loss_trace, H_float
-
-    def genetic_algorithm_opt(
-            self,
-            crossover_function,
-            parent_selection_function,
-            N=5000,
-            N_iter=1000,
-            roi=(slice(None), slice(None)),
-            backend: str = "numpy",  # 'numpy', 'cupy', or 'pyfftw'
-            mutation_rate: float = 0.02,
-    ):
-        # ---------------- choose array module -------------------------
-        xp = np
-
-        # ---------------- initial data & constants -------------------
-        T = xp.asarray(np.sqrt(self.image_array.image_array), dtype=xp.float32)
-        E_T = float((T ** 2).sum())  # scalar, CPU OK
-        H = xp.random.rand(N, *T.shape).astype(xp.float32)  # population tensor
-
-        error_trace, R_best, H_best = [], None, None
-        lowest_mse = float("inf")
-
-        # ---------------- helper: forward model for a batch ----------
-        def forward(h_batch):
-            field = xp.exp(1j * xp.pi * h_batch)
-            R = xp.fft.fftshift(xp.fft.fft2(xp.fft.fftshift(field, axes=(-2, -1)),
-                                            norm=None, axes=(-2, -1)), axes=(-2, -1))
-            absR = xp.abs(R)
-            # energy normalisation per individual
-            E_R = xp.sum(absR ** 2, axis=(-2, -1), keepdims=True)
-            scale = xp.sqrt(E_T / E_R)
-            return absR * scale
-
-        # ---------------- GA main loop -------------------------------
-        for it in tqdm(range(N_iter), disable=not self.verbose, desc="GA"):
-
-            R = forward(H)
-            mse = ((R[..., roi[0], roi[1]] - T[roi]) ** 2).mean(axis=(-2, -1)) / (
-                (T[roi] ** 2).sum())  # shape (N,)
-
-            # track best
-            idx_min = int(xp.argmin(mse))
-            if float(mse[idx_min]) < lowest_mse:
-                lowest_mse = float(mse[idx_min])
-                R_best = R[idx_min]
-                H_best = H[idx_min]
-
-            error_trace.append(float(mse.mean()))
-
-            # --- selection & crossover on CPU-friendly arrays --------
-            mse_cpu = np.asarray(mse)
-            H_cpu = np.asarray(H)
-            parents = parent_selection_function(mse_cpu, H_cpu)
-            children = crossover_function(parents, n_splits=4)
-
-            # # optional mutation (continuous)
-            # mask = np.random.rand(*children.shape) < mutation_rate
-            # children = (children + 0.05 * np.random.randn(*children.shape) * mask) % 1.0
-
-            # keep population size N
-            H = xp.asarray(children[:N], dtype=xp.float32)
-
-            # early stop criterion
-            if len(error_trace) >= 4 and len(set(np.round(error_trace[-4:], 8))) == 1:
-                break
-
-        # ---------------- final reconstructions ----------------------
-        R_final_batch = forward(H)
-        R_list = [r for r in R_final_batch]
-
-        return R_best, error_trace, H_best, np.asarray(H_cpu), R_list
-
-    # def pad_to_square_complex(arr: np.ndarray):
-    #     H, W = arr.shape
-    #     S = max(H, W)
-    #     pad_top    = (S - H) // 2
-    #     pad_bottom = S - H - pad_top
-    #     pad_left   = (S - W) // 2
-    #     pad_right  = S - W - pad_left
-    #     return np.pad(arr,
-    #                   pad_width=((pad_top, pad_bottom),
-    #                              (pad_left, pad_right)),
-    #                   mode="constant",
-    #                   constant_values=0), (pad_top, pad_left)
-
-
-
-    # ──────────────────────────────────────────────────────────────
-    # NEW version of the continuous-phase gradient descent
-    # ──────────────────────────────────────────────────────────────
-    def gradient_descent_cont_new(
-            self,
-            loss_function,              # unchanged signature
-            n_iter: int = 1_000,
-            lr: float = 5e-3,
-            roi: tuple = (slice(None), slice(None)),
-            finite_eps: float = 1e-4,   # kept for signature compatibility
-            sample_ratio: float = 0.10  # kept for signature compatibility
-    ):
-        # ---------- target amplitude -----------------------------------------
-        image = self.image_array.image_array
-        TargetAmplitude = np.sqrt(image).astype(np.float32)
-        TargetAmplitude = np.nan_to_num(TargetAmplitude, nan=0.0)
-
-        # pad the target so that *field* and *target* live on the same square
-        H, W = TargetAmplitude.shape
-        TargetAmplitude_sq, (pad_top, pad_left) = pad_to_square_complex(TargetAmplitude)
-        S = TargetAmplitude_sq.shape[0]          # side length of the square grid
-
-        # ROI must be shifted into the padded coordinates
-        tgt_roi = (slice(pad_top,  pad_top + H),
-                   slice(pad_left, pad_left + W))
-
-        # ---------- initialise phase -----------------------------------------
-        H_float = np.random.rand(H, W).astype(np.float32)  # ϕ in [0,1)
-
-        loss_trace = []
-        hw = S * S                                         # for the gradient scale
-
-        for _ in tqdm(range(n_iter), disable=not self.verbose, desc="GD"):
-            # forward model on the square grid
-            field = np.exp(1j * 2 * np.pi * H_float)
-            field, _ = pad_to_square_complex(field)        # (S, S)
-
-            R = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(field)))
-            A = np.abs(R)
-
-            # energy normalisation
-            scale = np.sqrt((TargetAmplitude_sq**2).sum() / (A**2).sum())
-            A *= scale
-
-            # loss on the rectangular content area only
-            A_roi = A[tgt_roi]
-            T_roi = TargetAmplitude_sq[tgt_roi]
-
-            L, g_roi = loss_function(A_roi, T_roi)
-            g_A = np.zeros_like(A, dtype=np.float32)
-            g_A[tgt_roi] = g_roi
-            loss_trace.append(L)
-
-            # back-propagate gradient to phase
-            denom = A + 1e-12
-            g_Q = g_A * (R / denom)
-            g_f = hw * np.fft.ifft2(np.fft.ifftshift(g_Q))
-            g_f = np.fft.fftshift(g_f)
-            g_phase = 2 * np.pi * np.imag(g_f * np.conj(field))
-
-            # update & wrap phase (only on the un-padded support)
-            g_phase_rect = g_phase[tgt_roi]                # crop to H×W
-            H_float -= lr * g_phase_rect.astype(np.float32)
-            H_float %= 1.0
-
-        # ---------- final reconstruction -------------------------------------
-        field_c, _ = pad_to_square_complex(np.exp(1j * 2 * np.pi * H_float))
-        R_final = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(field_c)))
-        R_final = np.abs(R_final)
-        R_final *= np.sqrt((TargetAmplitude_sq**2).sum() / (R_final**2).sum())
-
-        # crop back to original rectangle for metrics / display
-        R_final_rect = R_final[tgt_roi]
-
-        return R_final_rect.astype(np.float32), loss_trace, H_float
 
 
 
