@@ -1,17 +1,5 @@
-
-import cv2
 import numpy as np
-import os
-import matplotlib.pyplot as plt
-import PIL
-import skimage
-from skimage.transform import resize
-# from skimage.metrics import mean_squared_error
-from PIL import Image
-from tqdm import tqdm
-import math
-import image_processing_utils
-import loss_functions
+
 
 def mutate_binary(child, mutation_rate):
     mutation_mask = np.random.rand(*child.shape) < mutation_rate
@@ -19,6 +7,7 @@ def mutate_binary(child, mutation_rate):
     child = np.where(mutation_mask, 1 - child, child)
 
     return child
+
 
 def mutate(child: np.ndarray,
                       mutation_rate: float,
